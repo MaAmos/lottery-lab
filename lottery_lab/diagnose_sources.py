@@ -31,21 +31,11 @@ if __name__ == "__main__":
         if system:
             params["systemType"] = system
         cases.append((f"cwl-{system}-{size}-browser-{browser}", base + urlencode(params), browser))
-    cases.append(("sporttery", "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=100&isVerify=1&pageNo=1", True))
+    cases += [
+        ("sporttery", "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=100&isVerify=1&pageNo=1", True),
+        ("cwl-official-announcement", "https://www.cwl.gov.cn/c/2026/10/25/670920.shtml", True),
+        ("sporttery-official-pdf", "https://pdf.sporttery.cn/33800/26121/26121.pdf", True),
+    ]
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         for result in pool.map(probe, cases):
             print(json.dumps(result), flush=True)
-    from curl_cffi import requests
-    for name, url, _ in (cases[0], cases[-1]):
-        try:
-            response = requests.get(url, impersonate="chrome", timeout=25,
-                                    headers={"Referer": "https://www.cwl.gov.cn/ygkj/wqkjgg/ssq/"})
-            report = dict(name=name, client="curl_cffi", http_status=response.status_code)
-            try:
-                data = response.json()
-                report.update(json=True, state=data.get("state"))
-            except ValueError:
-                report.update(json=False, body_preview=response.text[:400])
-            print(json.dumps(report), flush=True)
-        except Exception as error:
-            print(json.dumps(dict(name=name, client="curl_cffi", error_type=type(error).__name__)), flush=True)
