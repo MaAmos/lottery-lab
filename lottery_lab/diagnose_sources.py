@@ -19,6 +19,7 @@ def probe(item):
         report.update(json=True, state=data.get("state"), count=len(data.get("result", [])) if isinstance(data.get("result"), list) else None)
     except (ValueError, TypeError):
         report["json"] = False
+        report["body_preview"] = body[:400].decode(errors="replace")
     return report
 
 
@@ -34,3 +35,17 @@ if __name__ == "__main__":
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         for result in pool.map(probe, cases):
             print(json.dumps(result), flush=True)
+    from curl_cffi import requests
+    for name, url, _ in (cases[0], cases[-1]):
+        try:
+            response = requests.get(url, impersonate="chrome", timeout=25,
+                                    headers={"Referer": "https://www.cwl.gov.cn/ygkj/wqkjgg/ssq/"})
+            report = dict(name=name, client="curl_cffi", http_status=response.status_code)
+            try:
+                data = response.json()
+                report.update(json=True, state=data.get("state"))
+            except ValueError:
+                report.update(json=False, body_preview=response.text[:400])
+            print(json.dumps(report), flush=True)
+        except Exception as error:
+            print(json.dumps(dict(name=name, client="curl_cffi", error_type=type(error).__name__)), flush=True)
