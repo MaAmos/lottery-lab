@@ -43,7 +43,7 @@ jobs:
           key: lottery-verified-history-v1-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: lottery-verified-history-v1-
       - name: Collect, settle, refit and publish
-        run: python lottery_lab/auto_update.py --enrich
+        run: python lottery_lab/auto_update.py
       - name: Keep verified history for the next run
         uses: actions/cache/save@v4
         with:

@@ -29,7 +29,7 @@ npx wrangler secret put AUTO_UPDATE_TOKEN
 
 ## 3. 把自动更新源码放入 GitHub 仓库
 
-使用这次提供的 `lottery-automation-source-*.zip`，解压后进入包含 `.github`、`lottery_lab`、`vue-version` 和 `cloudflare` 的目录。它包含工作流、训练代码、初始参考快照、前后端源码和部署工具，不含本地训练数据或密钥。macOS Finder 默认不显示 `.github`，终端 `ls -a` 可查看。
+使用这次提供的 `lottery-automation-source-*.zip`，解压后进入包含 `.github`、`lottery_lab`、`vue-version` 和 `cloudflare` 的目录。它包含工作流、训练代码、公开历史数据包、初始参考快照、前后端源码和部署工具，不含密钥或私人候选记录。macOS Finder 默认不显示 `.github`，终端 `ls -a` 可查看。
 
 在 GitHub 创建一个空仓库，可选择 Private；不要勾选初始化 README。随后在解压目录执行：
 

@@ -27,4 +27,4 @@ await writeFile(path.join(output, "SHA256SUMS"), hashes.join("\n") + "\n");
 execFileSync("zip", ["-q", "-r", `${name}.zip`, name], { cwd: releases });
 const archive = path.join(releases, `${name}.zip`);
 await writeFile(`${archive}.sha256`, `${createHash("sha256").update(await readFile(archive)).digest("hex")}  ${name}.zip\n`);
-console.log(JSON.stringify({ archive, directory: output, files: hashes.length, includes_raw_training_data: false }, null, 2));
+console.log(JSON.stringify({ archive, directory: output, files: hashes.length, includes_public_history_baseline: true, includes_private_run_data: false }, null, 2));

@@ -319,7 +319,7 @@ def train_all(seed=20261026, reference=None, publish_generated=True):
     if not all(dataset.values()):
         raise ValueError("Run collect first")
     # Retrieval timestamps don't alter the semantic dataset fingerprint.
-    canonical = {kind: [{k: v for k, v in d.items() if k not in ("retrieved_at", "source_url", "source_sha256")} for d in draws] for kind, draws in dataset.items()}
+    canonical = {kind: [{k: v for k, v in d.items() if k not in ("retrieved_at", "source_url", "source_sha256", "verification")} for d in draws] for kind, draws in dataset.items()}
     fingerprint = hashlib.sha256(json.dumps(canonical, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
     run_id = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
     run_dir = DATA / "runs" / run_id
