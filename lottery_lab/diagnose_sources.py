@@ -24,17 +24,15 @@ def probe(item):
 
 
 if __name__ == "__main__":
-    base = "https://www.cwl.gov.cn/cwl_admin/front/cwlkj/search/kjxx/findDrawNotice?"
-    cases = []
-    for system, size, browser in [("PC", 100, False), ("PC", 100, True), ("PC", 30, True), ("H5", 30, True), (None, 30, True)]:
-        params = dict(name="ssq", pageNo=1, pageSize=size)
-        if system:
-            params["systemType"] = system
-        cases.append((f"cwl-{system}-{size}-browser-{browser}", base + urlencode(params), browser))
-    cases += [
-        ("sporttery", "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=100&isVerify=1&pageNo=1", True),
-        ("cwl-official-announcement", "https://www.cwl.gov.cn/c/2026/10/25/670920.shtml", True),
-        ("sporttery-official-pdf", "https://pdf.sporttery.cn/33800/26121/26121.pdf", True),
+    cases = [
+        ("zhcw-ssq", "https://jc.zhcw.com/port/client_json.php?transactionType=10001001&lotteryId=1&issueCount=30&type=0&pageNum=1&pageSize=30", True),
+        ("zhcw-dlt", "https://jc.zhcw.com/port/client_json.php?transactionType=10001001&lotteryId=281&issueCount=30&type=0&pageNum=1&pageSize=30", True),
+        ("500-ssq", "https://datachart.500.com/ssq/history/newinc/history.php?limit=30&sort=0", True),
+        ("500-dlt", "https://datachart.500.com/dlt/history/newinc/history.php?limit=30&sort=0", True),
+        ("500-xml", "https://kaijiang.500.com/static/info/kaijiang/xml/ssq/list.xml", True),
+        ("17500-ssq", "https://www.17500.cn/getData/ssq.TXT", True),
+        ("17500-dlt", "https://www.17500.cn/getData/dlt.TXT", True),
+        ("zhcw-html", "https://kaijiang.zhcw.com/zhcw/html/ssq/list_1.html", True),
     ]
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         for result in pool.map(probe, cases):
