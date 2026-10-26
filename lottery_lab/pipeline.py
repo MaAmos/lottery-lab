@@ -56,7 +56,7 @@ def integer(value):
 
 def canonical_issue(kind, issue):
     text = str(issue)
-    if kind == "dlt" and re.fullmatch(r"\d{5}", text):
+    if re.fullmatch(r"\d{5}", text):
         text = "20" + text
     if not re.fullmatch(r"20\d{5}", text):
         raise ValueError(f"Unrecognized issue {kind}: {issue}")
@@ -174,33 +174,44 @@ def connect(path=DATA / "lottery.sqlite"):
     return db
 
 
-def fetch_json(url, refresh=False):
+def fetch_bytes(url, refresh=False):
     raw_dir = DATA / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
     key = hashlib.sha256(url.encode()).hexdigest()
     pointer = raw_dir / f"request-{key}.json"
     if pointer.exists() and not refresh:
         meta = json.loads(pointer.read_text())
-        body = (raw_dir / f"{meta['sha256']}.json").read_text()
-        return json.loads(body), meta
+        body = (raw_dir / f"{meta['sha256']}.json").read_bytes()
+        return body, meta
     error = None
     for attempt in range(4):
         try:
             # curl works with both official sites' TLS/client filtering; shell is never used.
-            response = subprocess.run(["curl", "--fail", "--location", "--silent", "--show-error", "--max-time", "40",
-                                       "-H", "Referer: https://www.cwl.gov.cn/ygkj/wqkjgg/ssq/", url],
-                                      capture_output=True, check=True)
-            data = json.loads(response.stdout)
-            sha = hashlib.sha256(response.stdout).hexdigest()
+            response = subprocess.run(["curl", "--location", "--silent", "--show-error", "--max-time", "40",
+                                       "-A", "Mozilla/5.0", "-H", "Accept: application/json, text/plain, */*",
+                                       "-H", "Referer: https://www.cwl.gov.cn/ygkj/wqkjgg/ssq/",
+                                       "--write-out", "\n%{http_code}", url], capture_output=True)
+            body, _, status = response.stdout.rpartition(b"\n")
+            if response.returncode or status != b"200":
+                raise RuntimeError(f"HTTP {status.decode(errors='replace')}; curl exit {response.returncode}")
+            sha = hashlib.sha256(body).hexdigest()
             path = raw_dir / f"{sha}.json"
-            path.write_bytes(response.stdout)
+            path.write_bytes(body)
             meta = dict(sha256=sha, url=url, retrieved_at=now(), raw_path=str(path.relative_to(ROOT.parent)))
             pointer.write_text(json.dumps(meta, ensure_ascii=False, indent=2))
-            return data, meta
-        except (subprocess.SubprocessError, json.JSONDecodeError) as exc:
+            return body, meta
+        except (subprocess.SubprocessError, RuntimeError) as exc:
             error = exc
             time.sleep(min(2 ** attempt, 8))
     raise RuntimeError(f"Source failed: {url}: {error}")
+
+
+def fetch_json(url, refresh=False):
+    body, meta = fetch_bytes(url, refresh)
+    try:
+        return json.loads(body), meta
+    except (ValueError, UnicodeError):
+        raise RuntimeError(f"Source returned invalid JSON: {url}") from None
 
 
 def source_url(kind, provider, page):
@@ -243,7 +254,9 @@ def store(db, draws, meta):
             if any(old[k] != draw[k] for k in ("red", "blue", "draw_date")):
                 conflicts.append(dict(issue=issue, old=old, new=draw))
                 continue
-            if draw["provider"] == "sina" and old["provider"] != "sina":
+            if draw["provider"] in ("sina", "consensus") and old["provider"] in ("cwl", "sporttery"):
+                continue
+            if draw["provider"] == "sina" and old["provider"] == "consensus":
                 continue
             if not draw["regions"] and old.get("enrichment_sources"):
                 draw["regions"] = old["regions"]
@@ -274,7 +287,8 @@ def audit(draws):
     dates = [d["draw_date"] for d in draws]
     return dict(count=len(draws), first_issue=draws[0]["issue"], last_issue=draws[-1]["issue"],
                 first_date=dates[0], last_date=dates[-1], missing_issues=missing,
-                official_count=sum(d["provider"] != "sina" for d in draws),
+                official_count=sum(d["provider"] in ("cwl", "sporttery") for d in draws),
+                consensus_count=sum(d["provider"] == "consensus" for d in draws),
                 sales_count=sum(d["sales_cents"] is not None for d in draws),
                 pool_count=sum(d["pool_cents"] is not None for d in draws),
                 usable_pool_count=sum(d["pool_cents"] is not None and "pool_zero_unverified" not in d.get("metadata_flags", []) for d in draws),

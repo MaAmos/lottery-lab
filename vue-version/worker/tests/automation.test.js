@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import artifact from "../src/generated/research-data.js";
-import { handleAutomation, readSnapshot, ingestDraws, settle, validateSnapshot, scoreForecast, eligible } from "../src/automation.js";
+import { handleAutomation, readSnapshot, ingestDraws, settle, validateSnapshot, validateDraw, scoreForecast, eligible } from "../src/automation.js";
 import { handleResearch } from "../src/research.js";
 import { database } from "./db-helper.js";
 
@@ -19,6 +19,28 @@ test("admin auth rejects missing/incorrect credentials before accessing DB", asy
   const DB = { prepare() { throw new Error("must not access DB"); } };
   assert.equal((await handleAutomation(request("snapshot"), { DB })).status, 503);
   assert.equal((await handleAutomation(request("snapshot", undefined, "incorrect"), { DB, AUTO_UPDATE_TOKEN: token })).status, 401);
+});
+
+test("public-source draws need two matching records from distinct approved publishers", () => {
+  const draw = { lottery_type: "ssq", issue: "2026001", draw_date: "2026-01-01", red: [1, 2, 3, 4, 5, 6], blue: [1],
+    source_url: "https://alpha.lottery.sina.com.cn/gateway/index/entry?lottoType=101" };
+  assert.throws(() => validateDraw(draw), /sources/);
+  const urls = { sina: draw.source_url, "500": "https://datachart.500.com/ssq/history/newinc/history.php?limit=100" };
+  draw.verification = { type: "two_public_sources", sources: Object.entries(urls).map(([provider, source_url]) => ({
+    provider, source_url, source_sha256: "a".repeat(64), retrieved_at: "2026-01-02T00:00:00Z",
+    ...Object.fromEntries(["issue", "draw_date", "red", "blue"].map(k => [k, structuredClone(draw[k])])),
+  })) };
+  assert.equal(validateDraw(draw), draw);
+  for (const mutate of [
+    d => { d.verification.sources[1] = d.verification.sources[0]; },
+    d => { d.verification.sources[1].blue = [2]; },
+    d => { d.verification.sources[1].source_url = "https://datachart.500.com.evil.org/ssq/history/newinc/history.php"; },
+    d => { d.verification.sources[1].source_url = "https://datachart.500.com/dlt/history/newinc/history.php"; },
+    d => { d.verification.sources[0].source_sha256 = "invalid"; },
+  ]) {
+    const bad = structuredClone(draw); mutate(bad);
+    assert.throws(() => validateDraw(bad));
+  }
 });
 
 test("atomic publication changes dynamic report; version conflicts keep previous active model", async () => {

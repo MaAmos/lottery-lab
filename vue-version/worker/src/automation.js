@@ -41,7 +41,25 @@ export function validateDraw(draw) {
   }
   const source = new URL(draw.source_url);
   const expected = draw.lottery_type === "ssq" ? "www.cwl.gov.cn" : "webapi.sporttery.cn";
-  if (source.protocol !== "https:" || source.hostname !== expected) fail("An official source is required");
+  if (source.protocol !== "https:" || source.username || source.password || source.port) fail("Invalid draw source");
+  if (source.hostname !== expected) {
+    const evidence = draw.verification;
+    if (evidence?.type !== "two_public_sources" || !Array.isArray(evidence.sources) || evidence.sources.length !== 2) fail("Verified draw sources are required");
+    const hosts = new Set();
+    for (const entry of evidence.sources) {
+      const url = new URL(entry.source_url);
+      if (url.protocol !== "https:" || url.username || url.password || url.port
+        || !/^[a-f0-9]{64}$/.test(entry.source_sha256) || !Number.isFinite(Date.parse(entry.retrieved_at))
+        || Date.parse(entry.retrieved_at) > Date.now() + 300000
+        || ["issue", "draw_date", "red", "blue"].some(k => JSON.stringify(entry[k]) !== JSON.stringify(draw[k]))) fail("Public source evidence mismatch");
+      if (entry.provider === "sina" && url.hostname === "alpha.lottery.sina.com.cn" && url.pathname === "/gateway/index/entry"
+        && url.searchParams.get("lottoType") === (draw.lottery_type === "ssq" ? "101" : "201")) hosts.add("sina");
+      else if (entry.provider === "500" && url.hostname === "datachart.500.com"
+        && url.pathname === `/${draw.lottery_type}/history/newinc/history.php`) hosts.add("500");
+      else fail("Unsupported public draw source");
+    }
+    if (hosts.size !== 2 || !evidence.sources.some(entry => entry.source_url === draw.source_url)) fail("Two distinct public sources are required");
+  }
   if (deadline(draw.draw_date) > Date.now()) fail("Cannot ingest a future draw");
   return draw;
 }
@@ -241,7 +259,7 @@ export async function handleAutomation(request, env) {
     for (const kind of Object.keys(CONFIG)) {
       const r = next.lotteries[kind];
       const verified = await env.DB.prepare("SELECT payload FROM research_draws WHERE lottery_type=? AND issue=?").bind(kind, r.coverage.last_issue).first();
-      if (!verified) fail("Publish official draws before the model");
+      if (!verified) fail("Publish verified draws before the model");
       const draw = JSON.parse(verified.payload);
       if (["draw_date", "red", "blue"].some(k => JSON.stringify(draw[k]) !== JSON.stringify(r.latest_draw[k]))) fail("Model cutoff does not match verified draw");
     }

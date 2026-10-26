@@ -282,7 +282,7 @@ def train_kind(draws, kind, seed, reference=None):
                   metrics=metrics, same_budget_test=same_budget, production_policy=policy, frequency_windows={p: pools[p]["frequency_window"] for p in pools},
                   logistic_regularization={p: {name: m["regularization"] for name, m in pools[p]["models"].items()} for p in pools},
                   bootstrap=dict(confidence=.99, circular_block_length=10, samples=2000, seed=seed),
-                  latest_draw={key: draws[-1][key] for key in ("issue", "draw_date", "red", "blue", "sales_cents", "pool_cents", "prize_tiers", "regions", "detail_url")},
+                  latest_draw={key: draws[-1].get(key) for key in ("issue", "draw_date", "red", "blue", "sales_cents", "pool_cents", "prize_tiers", "regions", "detail_url", "provider", "source_url", "verification")},
                   target_issue=None, target_date_estimate=next_date(kind, draws[-1]["draw_date"]),
                   combination_count=math.comb(rm, rc) * math.comb(bm, bc),
                   research_marginals={name: {p: pools[p]["live"][name] for p in pools} for name in names},
@@ -324,11 +324,11 @@ def train_all(seed=20261026, reference=None, publish_generated=True):
     run_id = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
     run_dir = DATA / "runs" / run_id
     run_dir.mkdir(parents=True)
-    code_hash = hashlib.sha256((ROOT / "pipeline.py").read_bytes() + (ROOT / "train.py").read_bytes()).hexdigest()
+    code_hash = hashlib.sha256(b"".join((ROOT / name).read_bytes() for name in ("pipeline.py", "consensus.py", "baseline.py", "train.py"))).hexdigest()
     artifact = dict(version=VERSION, model_run_id=run_id, created_at=now(), dataset_sha256=fingerprint, seed=seed,
                     runtime=dict(python=sys.version.split()[0], numpy=np.__version__, training_code_sha256=code_hash),
                     feature_names=dict(history=HISTORY_NAMES, metadata=META_NAMES),
-                    limitations=["公平独立开奖下，历史数据不提供下一期必然可用的选号优势", "双色球早期部分元数据缺失", "历史发布时间未核实；元数据使用至少滞后两期和48小时隔离，仅为探索性回测", "省级分布仅覆盖部分期次；大乐透新闻分布只接受合计与官方一等奖注数相符的记录，具体中奖网点未取得可核实样本", "未核实每期大乐透命中规则，不提供虚构奖金回测", "候选是未购买的方案，期号和开售状态以官方为准"], lotteries={})
+                    limitations=["公平独立开奖下，历史数据不提供下一期必然可用的选号优势", "官方接口限制云端访问；新增号码由新浪和500独立发布结果一致校验，未直接核验官网，周边元数据保留缺失", "双色球早期部分元数据缺失", "历史发布时间未核实；元数据使用至少滞后两期和48小时隔离，仅为探索性回测", "省级分布仅覆盖部分期次；大乐透新闻分布只接受合计与官方一等奖注数相符的记录，具体中奖网点未取得可核实样本", "未核实每期大乐透命中规则，不提供虚构奖金回测", "候选是未购买的方案，期号和开售状态以官方为准"], lotteries={})
     for offset, (kind, draws) in enumerate(dataset.items()):
         print(f"Training {kind}: {len(draws)} draws", flush=True)
         report, weights = train_kind(draws, kind, seed + offset, reference["lotteries"][kind] if reference else None)

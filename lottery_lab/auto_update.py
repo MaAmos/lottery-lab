@@ -14,8 +14,9 @@ import urllib.parse
 import urllib.request
 import uuid
 
-from pipeline import CONFIG, DATA, ROOT, collect, connect, enrich_regions, load_draws
+from pipeline import CONFIG, DATA, ROOT, connect, enrich_regions, load_draws
 from train import train_all
+from consensus import collect_consensus
 
 
 class API:
@@ -48,12 +49,13 @@ class API:
         return result
 
 
-def recent_official(dataset):
+def recent_verified(dataset):
     result = []
     for kind, draws in dataset.items():
-        # Official records are needed for settlement and to verify the published cutoff.
-        for draw in [d for d in draws if d["provider"] != "sina"][-30:]:
-            result.append({"lottery_type": kind, **{key: draw[key] for key in ("issue", "draw_date", "red", "blue", "source_url")}})
+        # Preserve source evidence for settlement and the published cutoff.
+        for draw in [d for d in draws if d["provider"] in ("cwl", "sporttery", "consensus")][-30:]:
+            result.append({"lottery_type": kind, **{key: draw[key] for key in ("issue", "draw_date", "red", "blue", "source_url")},
+                           **({"verification": draw["verification"]} if draw.get("verification") else {})})
     return result
 
 
@@ -81,6 +83,7 @@ def main():
     if args.cached and not args.dry_run:
         parser.error("--cached requires --dry-run")
     api = None
+    first_activation = False
     run_id = "gha-" + os.environ.get("GITHUB_RUN_ID", uuid.uuid4().hex) + "-" + os.environ.get("GITHUB_RUN_ATTEMPT", "1")
     stage = "setup"
     def status(state, detail=""):
@@ -91,10 +94,12 @@ def main():
             reference = json.loads((ROOT.parent / "vue-version/worker/src/generated/research.json").read_text())
         else:
             api = API(os.environ["LOTTERY_API_URL"], os.environ["LOTTERY_AUTO_UPDATE_TOKEN"], args.allow_local)
-            reference = api.call("/api/admin/snapshot")["data"]["artifact"]
+            snapshot = api.call("/api/admin/snapshot")["data"]
+            reference = snapshot["artifact"]
+            first_activation = snapshot["source"] == "bundled"
         stage = "collect"; status("running")
         if not args.cached:
-            collect(refresh=True)
+            collect_consensus(refresh=True)
         if args.enrich and not args.cached:
             try:
                 enrich_regions(limit=20, refresh=True)
@@ -107,21 +112,12 @@ def main():
         if api:
             # Upload one lottery per request: <=30 draw lookups plus settlement stays
             # below the Workers free-plan subrequest allowance in ordinary use.
-            rows = recent_official(dataset)
+            rows = recent_verified(dataset)
             for kind in CONFIG:
                 api.call("/api/admin/draws", {"draws": [d for d in rows if d["lottery_type"] == kind]})
-        if not advanced and not args.force:
-            # First deployment must activate D1 even when the bundled cutoff is current.
-            if api:
-                snapshot = api.call("/api/admin/snapshot")["data"]
-                if snapshot["source"] == "bundled":
-                    stage = "publish"
-                    api.call("/api/admin/publish", {"expected_model_run_id": reference["model_run_id"], "artifact": reference})
-                    status("succeeded", "Initial snapshot activated; awaiting the next draw")
-                    print("Initial D1 snapshot activated", flush=True)
-                    return
-            status("no_change", "No new official draw; existing expiry retained")
-            print("No new official draw; skipped training and retained the published snapshot", flush=True)
+        if not advanced and not args.force and not first_activation:
+            status("no_change", "No new verified draw; existing expiry retained")
+            print("No new verified draw; skipped training and retained the published snapshot", flush=True)
             return
         stage = "train"; status("running")
         artifact = train_all(seed=reference["seed"], reference=reference, publish_generated=False)

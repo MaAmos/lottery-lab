@@ -34,8 +34,23 @@ jobs:
       - run: python -m pip install -r lottery_lab/requirements.txt
       - name: Validate pipeline
         run: python -m unittest discover -s lottery_lab -p 'test*.py'
+      - name: Restore verified history
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            lottery_lab/data/lottery.sqlite
+            lottery_lab/data/raw/
+          key: lottery-verified-history-v1-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: lottery-verified-history-v1-
       - name: Collect, settle, refit and publish
         run: python lottery_lab/auto_update.py --enrich
+      - name: Keep verified history for the next run
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            lottery_lab/data/lottery.sqlite
+            lottery_lab/data/raw/
+          key: lottery-verified-history-v1-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Retain reports and reproducible training inputs
         if: always()
         uses: actions/upload-artifact@v4

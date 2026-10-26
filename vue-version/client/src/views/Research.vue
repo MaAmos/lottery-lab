@@ -34,14 +34,17 @@
         <p class="muted">{{ current.coverage.first_date }} 起；官方来源覆盖 {{ current.coverage.official_count }} 期，销量 {{ current.coverage.sales_count }} 期，奖池 {{ current.coverage.pool_count }} 期。缺失字段保留为空。</p>
         <p class="muted">当前范围内期号缺失 {{ current.coverage.missing_issues.length }} 期。双色球早期号码由新浪补齐；具体中奖网点尚未取得可核实样本。</p>
         <p v-if="current.coverage.unverified_zero_pool_count" class="muted">其中 {{ current.coverage.unverified_zero_pool_count }} 期早期奖池为来源返回的0值，同时缺失销量，真实性未核实。保留原值，训练中按缺失处理。</p>
-        <details><summary>最近一期官方数据</summary>
+        <p v-if="current.coverage.consensus_count" class="muted">其中 {{ current.coverage.consensus_count }} 期由新浪与 500 公开来源一致校验，未计入官方来源覆盖。未核实的周边字段保留为空。</p>
+        <details><summary>最近一期开奖数据</summary>
           <p>号码 {{ current.latest_draw.red.map(format).join(' ') }} + {{ current.latest_draw.blue.map(format).join(' ') }}</p>
           <p>销量 {{ yuan(current.latest_draw.sales_cents) }} 元 · 开奖后奖池 {{ yuan(current.latest_draw.pool_cents) }} 元</p>
           <p>可核对的省级一等奖分布：{{ current.latest_draw.regions.length ? current.latest_draw.regions.map(r => `${r.region}${r.first_prize_stakes}注`).join('，') : '未取得完整可解析样本' }}。中奖注数不等于中奖人数。</p>
           <table><thead><tr><th>奖级</th><th>中奖注数</th><th>单注奖金 / 元</th></tr></thead><tbody>
             <tr v-for="tier in current.latest_draw.prize_tiers" :key="tier.tier"><td>{{ tier.label }}</td><td>{{ tier.stakes ?? '缺失' }}</td><td>{{ yuan(tier.amount_cents) }}</td></tr>
           </tbody></table>
-          <a v-if="current.latest_draw.detail_url" :href="current.latest_draw.detail_url" target="_blank" rel="noopener noreferrer">查看官方公告</a>
+          <a v-if="current.latest_draw.detail_url" :href="current.latest_draw.detail_url" target="_blank" rel="noopener noreferrer">查看来源公告</a>
+          <p v-if="current.latest_draw.verification?.type === 'two_public_sources'" class="muted">号码已由两个公开来源一致校验，尚未直接核验官方接口。</p>
+          <p v-if="current.latest_draw.verification"><a v-for="source in current.latest_draw.verification.sources" :key="source.provider" :href="source.source_url" target="_blank" rel="noopener noreferrer" style="margin-right: 1rem">{{ source.provider === 'sina' ? '新浪来源' : '500 来源' }}</a></p>
         </details>
       </section>
 

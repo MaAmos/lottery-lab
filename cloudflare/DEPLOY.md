@@ -118,7 +118,7 @@ SQL只包含 `CREATE TABLE IF NOT EXISTS` 和 `CREATE INDEX IF NOT EXISTS`，可
 - `official_draw_snapshots`：保存定时获取的官方近期原始开奖数据。
 - `research_model_versions` / `research_active_model`：不可覆盖的模型快照及当前版本指针。
 - `research_automation_runs`：后台任务运行状态。
-- `research_draws`：通过检查的官方号码，用于核对。
+- `research_draws`：通过检查的官方历史号码或附有两个公开来源一致证据的新号码，用于核对。
 - `research_forecasts` / `research_forecast_results`：开奖前首次发布的前瞻快照及开奖后的评分。
 - `research_pending_candidates` / `research_prediction_results`：新候选的匹配条件及实际命中结果。
 
