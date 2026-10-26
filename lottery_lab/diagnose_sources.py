@@ -2,6 +2,7 @@
 import concurrent.futures
 import json
 import subprocess
+import re
 from urllib.parse import urlencode
 
 
@@ -15,7 +16,10 @@ def probe(item):
     body, _, status = result.stdout.rpartition(b"\n")
     report = dict(name=name, url=url, http_status=status.decode(errors="replace"), curl_exit=result.returncode)
     try:
-        data = json.loads(body)
+        text = body.decode()
+        if text.startswith("lotteryCallback("):
+            text = text[len("lotteryCallback("):].removesuffix(";").removesuffix(")")
+        data = json.loads(text)
         report.update(json=True, state=data.get("state"), count=len(data.get("result", [])) if isinstance(data.get("result"), list) else None)
     except (ValueError, TypeError):
         report["json"] = False
@@ -25,8 +29,8 @@ def probe(item):
 
 if __name__ == "__main__":
     cases = [
-        ("zhcw-ssq", "https://jc.zhcw.com/port/client_json.php?transactionType=10001001&lotteryId=1&issueCount=30&type=0&pageNum=1&pageSize=30", True),
-        ("zhcw-dlt", "https://jc.zhcw.com/port/client_json.php?transactionType=10001001&lotteryId=281&issueCount=30&type=0&pageNum=1&pageSize=30", True),
+        ("zhcw-ssq", "https://jc.zhcw.com/port/client_json.php?callback=lotteryCallback&transactionType=10001001&lotteryId=1&issueCount=100&startIssue=&endIssue=&startDate=&endDate=&type=0&pageNum=1&pageSize=100&tt=0.5", True),
+        ("zhcw-dlt", "https://jc.zhcw.com/port/client_json.php?callback=lotteryCallback&transactionType=10001001&lotteryId=281&issueCount=100&startIssue=&endIssue=&startDate=&endDate=&type=0&pageNum=1&pageSize=100&tt=0.5", True),
         ("500-ssq", "https://datachart.500.com/ssq/history/newinc/history.php?limit=30&sort=0", True),
         ("500-dlt", "https://datachart.500.com/dlt/history/newinc/history.php?limit=30&sort=0", True),
         ("500-xml", "https://kaijiang.500.com/static/info/kaijiang/xml/ssq/list.xml", True),
