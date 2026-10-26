@@ -1,0 +1,14 @@
+name = "lottery-worker"
+account_id = "2d3baaa5582d33b88acb090fdf9813cb"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+[vars]
+# Variables
+
+[[d1_databases]]
+binding = "DB"
+database_name = "lottery-lab-fresh-20261026"
+database_id = "90e93795-a555-4fdc-80e0-de06d3a230ee"
+[triggers]
+crons = ["0 14 * * *"] # 每晚22:00北京时间，覆盖两种彩票；只追加开奖快照

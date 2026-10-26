@@ -1,0 +1,74 @@
+/* Global Styles mimic miniprogram app.wxss */
+:root {
+  --primary-color: #ff4d4f;
+  --blue-color: #1890ff;
+  --text-color: #333;
+  --sub-text-color: #999;
+}
+
+.container {
+  padding: 20px;
+  padding-bottom: 80px; /* Space for bottom content if needed */
+}
+
+/* Common Card Style */
+.section-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.section-title {
+  margin-bottom: 16px;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 10px;
+}
+
+.section-title-text {
+  font-size: 18px;
+  font-weight: bold;
+  color: #333;
+  display: flex;
+  align-items: center;
+}
+
+.section-subtitle {
+  font-size: 12px;
+  color: #999;
+  margin-top: 4px;
+}
+
+/* Balls */
+/* .number-ball,
+.prediction-number-ball {
+  width: 32px;
+  height: 32px;
+  line-height: 32px;
+  text-align: center;
+  border-radius: 50%;
+  font-size: 14px;
+  font-weight: bold;
+  color: #fff;
+  margin: 4px;
+  display: inline-block;
+} */
+
+/* .hit-ball,
+.red-ball {
+  background: #ff4d4f;
+}
+
+.blue-ball {
+  background: #1890ff;
+} */
+
+.miss-item .hit-ball {
+  /* If needed distinctive style */
+}
+/*
+.lottery .number-ball {
+  background: #f0f0f0;
+  color: #666;
+} */

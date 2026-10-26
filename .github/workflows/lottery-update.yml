@@ -1,0 +1,52 @@
+name: Lottery daily update
+
+on:
+  schedule:
+    # UTC -> Beijing 22:30, 23:30, and 07:30 next morning.
+    - cron: '30 14 * * *'
+    - cron: '30 15 * * *'
+    - cron: '30 23 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lottery-model-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      LOTTERY_API_URL: ${{ secrets.LOTTERY_API_URL }}
+      LOTTERY_AUTO_UPDATE_TOKEN: ${{ secrets.LOTTERY_AUTO_UPDATE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: lottery_lab/requirements.txt
+      - run: python -m pip install -r lottery_lab/requirements.txt
+      - name: Validate pipeline
+        run: python -m unittest discover -s lottery_lab -p 'test*.py'
+      - name: Collect, settle, refit and publish
+        run: python lottery_lab/auto_update.py --enrich
+      - name: Retain reports and reproducible training inputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lottery-update-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 30
+          if-no-files-found: ignore
+          path: |
+            lottery_lab/data/coverage.json
+            lottery_lab/data/latest-report.*
+            lottery_lab/data/runs/
+            lottery_lab/data/raw/
+            lottery_lab/data/*.jsonl
+            lottery_lab/data/conflicts.json

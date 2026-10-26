@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+lottery_lab/data/
+vue-version/client/dist/
+**/node_modules/
+releases/
+**/.wrangler/
+.env
+.env.*
+**/.dev.vars
+**/.dev.vars.*

@@ -1,0 +1,16 @@
+{
+  "name": "lottery-worker",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker for Lottery Prediction",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "dev": "node dev-server.mjs"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "itty-router": "^4.0.23"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lottery-lab",
+  "account_id": "2d3baaa5582d33b88acb090fdf9813cb",
+  "main": "worker.js",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "assets": {
+    "directory": "./assets",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api", "/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "lottery-lab-fresh-20261026",
+      "database_id": "90e93795-a555-4fdc-80e0-de06d3a230ee"
+    }
+  ],
+  "triggers": {
+    "crons": ["0 14 * * *"]
+  },
+  "observability": {
+    "enabled": true
+  }
+}
