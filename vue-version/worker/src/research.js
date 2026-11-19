@@ -3,6 +3,7 @@ import { readSnapshot, handleAutomation, automationStatus, ingestDraws, insertRo
 
 const CONFIG = { ssq: [33, 6, 16, 1], dlt: [35, 5, 12, 2] };
 const MODELS = new Set(["uniform", "frequency", "history_logistic", "metadata_logistic"]);
+const BIRTHDAY_POOL = [1, 2, 5, 7, 16, 18, 21, 27];
 const headers = { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*", "Cache-Control": "no-store" };
 const response = (data, status = 200) => new Response(JSON.stringify(data), { status, headers });
 
@@ -38,8 +39,79 @@ function pick(random, weights, count) {
   return selected.sort((a, b) => a - b).map(n => String(n).padStart(2, "0"));
 }
 
+function combinations(values, count) {
+  const result = [];
+  function visit(start, chosen) {
+    if (chosen.length === count) { result.push(chosen); return; }
+    for (let i = start; i <= values.length - (count - chosen.length); i++) visit(i + 1, [...chosen, values[i]]);
+  }
+  visit(0, []);
+  return result;
+}
+
+function generateBirthday(body, timestamp, snapshot, kind) {
+  const report = snapshot.lotteries[kind];
+  const status = statusFor(report, timestamp);
+  if (status.stale) throw new Error("数据快照已过生成截止时间，请重新采集并训练后生成下一期候选");
+  const selectionMode = body.selectionMode ?? "single";
+  const budget = body.budget ?? 10;
+  if (!["single", "compound"].includes(selectionMode)) throw new Error("选号方式须为 single/compound");
+  if (!Number.isInteger(budget) || budget < 2 || budget > 100) throw new Error("预算须为2—100元的整数");
+  const seed = body.seed ?? crypto.getRandomValues(new Uint32Array(1))[0];
+  if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) throw new Error("seed 须为0—4294967295整数");
+
+  const [redMax, redCount, blueMax, blueCount] = CONFIG[kind];
+  const redPool = BIRTHDAY_POOL.filter(number => number <= redMax);
+  const bluePool = BIRTHDAY_POOL.filter(number => number <= blueMax);
+  if (redPool.length < redCount || bluePool.length < blueCount) throw new Error("固定号码池不足以组成该彩种的合法号码");
+  const random = rng32(seed);
+  let plans, structure, cost;
+  if (selectionMode === "single") {
+    const count = Math.floor(budget / 2);
+    if (count < 1 || count > 20) throw new Error("单式注数须为1—20注");
+    plans = [];
+    const keys = new Set();
+    const maxTickets = combinations(redPool, redCount).length * combinations(bluePool, blueCount).length;
+    if (count > maxTickets) throw new Error("固定号码池可组成的不同单式数量不足");
+    let attempts = 0;
+    while (plans.length < count) {
+      if (++attempts > 2000) throw new Error("无法生成足够的不同单式号码");
+      const ticket = { red: pick(random, Array(redMax).fill(1).map((_, i) => redPool.includes(i + 1) ? 1 : 0), redCount),
+        blue: pick(random, Array(blueMax).fill(1).map((_, i) => bluePool.includes(i + 1) ? 1 : 0), blueCount) };
+      const key = `${ticket.red.join(",")}|${ticket.blue.join(",")}`;
+      if (!keys.has(key)) { plans.push(ticket); keys.add(key); }
+    }
+    cost = count * 2;
+    structure = `${redCount}+${blueCount} 单式 × ${count} 注`;
+  } else {
+    // Fixed compound structures use the available birthday pool and show the exact expanded cost.
+    const redPick = kind === "ssq" ? 6 : 5;
+    const bluePick = kind === "ssq" ? 5 : 4;
+    if (redPool.length < redPick || bluePool.length < bluePick) throw new Error("固定号码池不足以组成该彩种的复式");
+    const selectedRed = pick(random, Array(redMax).fill(1).map((_, i) => redPool.includes(i + 1) ? 1 : 0), redPick);
+    const selectedBlue = pick(random, Array(blueMax).fill(1).map((_, i) => bluePool.includes(i + 1) ? 1 : 0), bluePick);
+    plans = combinations(selectedRed, redCount).flatMap(red => combinations(selectedBlue, blueCount).map(blue => ({ red, blue })));
+    cost = plans.length * 2;
+    structure = `${redPick}+${bluePick} 复式（${plans.length} 注）`;
+  }
+  return { run_id: crypto.randomUUID(), created_at: new Date(timestamp).toISOString(), lottery_type: kind,
+    model: "birthday_pool", selection_mode: selectionMode, fixed_number_pool: BIRTHDAY_POOL.map(n => String(n).padStart(2, "0")),
+    red_pool: redPool.map(n => String(n).padStart(2, "0")), blue_pool: bluePool.map(n => String(n).padStart(2, "0")),
+    structure, model_run_id: snapshot.model_run_id, dataset_sha256: snapshot.dataset_sha256,
+    seed, rng: "mulberry32-v1", plans, count: plans.length, cost_yuan: cost, purchased: false,
+    target_issue: null, target_date_estimate: report.target_date_estimate, data_cutoff_issue: report.coverage.last_issue, status,
+    jackpot_probability_under_fair_draw: plans.length / report.combination_count,
+    coverage_expression: `${plans.length}/${report.combination_count}`, experimental: false,
+    notice: "固定生日号码池仅作为娱乐选号依据，不会提高单注或整组号码的客观中奖概率。复式按展开后的注数计价。",
+    saved: false, storage_notice: "可下载本次候选记录；下载或生成均不表示已购票。" };
+}
+
 export function generate(body, timestamp = Date.now(), snapshot = artifact) {
   const kind = body.lotteryType ?? body.lottery_type ?? "ssq";
+  if (body.selectionMode || body.birthdayPool === true) {
+    if (!Object.hasOwn(CONFIG, kind)) throw new Error("彩种须为 ssq/dlt");
+    return generateBirthday(body, timestamp, snapshot, kind);
+  }
   const count = body.count ?? 5;
   const model = body.model ?? "uniform";
   if (!Object.hasOwn(CONFIG, kind) || !Number.isInteger(count) || count < 1 || count > 20 || !MODELS.has(model)) {

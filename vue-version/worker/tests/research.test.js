@@ -36,6 +36,43 @@ test("experimental models keep their status and probabilities distinct from scor
   }
 });
 
+test("fixed birthday pool creates legal, reproducible 10-yuan single tickets", () => {
+  for (const lotteryType of ["ssq", "dlt"]) {
+    const body = { lotteryType, birthdayPool: true, selectionMode: "single", budget: 10, seed: 12345 };
+    const a = generate(body, time(lotteryType)), b = generate(body, time(lotteryType));
+    assert.deepEqual(a.plans, b.plans);
+    assert.equal(a.plans.length, 5);
+    assert.equal(a.cost_yuan, 10);
+    assert.deepEqual(a.fixed_number_pool, ["01", "02", "05", "07", "16", "18", "21", "27"]);
+    assert.deepEqual(a.blue_pool, lotteryType === "ssq" ? ["01", "02", "05", "07", "16"] : ["01", "02", "05", "07"]);
+    for (const plan of a.plans) {
+      assert.ok(plan.red.every(number => a.red_pool.includes(number)));
+      assert.ok(plan.blue.every(number => a.blue_pool.includes(number)));
+      assert.equal(plan.red.length, lotteryType === "ssq" ? 6 : 5);
+      assert.equal(plan.blue.length, lotteryType === "ssq" ? 1 : 2);
+    }
+    assert.match(a.notice, /不会提高/);
+  }
+});
+
+test("birthday compound costs match expanded legal combinations", () => {
+  const ssq = generate({ lotteryType: "ssq", selectionMode: "compound", budget: 10, seed: 7 }, time("ssq"));
+  const dlt = generate({ lotteryType: "dlt", selectionMode: "compound", budget: 10, seed: 7 }, time("dlt"));
+  assert.equal(ssq.structure, "6+5 复式（5 注）");
+  assert.equal(ssq.cost_yuan, 10);
+  assert.equal(dlt.structure, "5+4 复式（6 注）");
+  assert.equal(dlt.cost_yuan, 12);
+  assert.equal(ssq.plans.length * 2, ssq.cost_yuan);
+  assert.equal(dlt.plans.length * 2, dlt.cost_yuan);
+});
+
+test("birthday selection validates mode, budget, and supported lottery", () => {
+  for (const body of [
+    { selectionMode: "system" }, { selectionMode: "single", budget: 1 },
+    { selectionMode: "single", budget: 102 }, { lotteryType: "xyz", selectionMode: "single" },
+  ]) assert.throws(() => generate(body, time("ssq")));
+});
+
 test("concentrated experimental weights cannot cause an unbounded duplicate loop", () => {
   const snapshot = structuredClone(artifact), p = snapshot.lotteries.ssq.research_marginals.frequency;
   p.red = Array.from({ length: 33 }, (_, i) => i < 6 ? 1 - 1e-12 : 1e-300);

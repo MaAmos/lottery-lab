@@ -82,17 +82,32 @@
       <section class="panel candidates">
         <div class="section-heading"><h2>下期候选</h2><span>日期估计 {{ current.target_date_estimate }} · 期号待官方确认</span></div>
         <p v-if="current.status.stale" class="error">数据快照已过生成截止时间，等待自动更新。若持续未更新，请检查任务状态。下方保留的是当时生成的历史候选。</p>
-        <div class="controls">
+        <div class="choice-tabs" role="group" aria-label="选号来源">
+          <button :class="{ active: generationMode === 'model' }" @click="generationMode = 'model'">模型选号</button>
+          <button :class="{ active: generationMode === 'birthday' }" @click="generationMode = 'birthday'">固定生日号码</button>
+        </div>
+        <template v-if="generationMode === 'birthday'">
+          <p>固定号码池：<strong class="pool-numbers">{{ birthdayPool.map(format).join('　') }}</strong></p>
+          <p class="muted">系统按所选彩种自动拆分可用号码，不需要填写生日或号码。默认预算 10 元；复式按展开后的实际注数计价。</p>
+          <div class="controls">
+            <label>票型<select v-model="birthdayMode"><option value="single">单式</option><option value="compound">复式</option></select></label>
+            <label v-if="birthdayMode === 'single'">预算 / 元<input v-model.number="budget" type="number" min="2" max="40" step="2" /></label>
+            <button class="primary" :disabled="generating || current.status.stale" @click="generate">{{ generating ? '生成中…' : '按固定号码生成' }}</button>
+          </div>
+          <p class="muted">单式：每注 2 元，按预算生成整注；复式：双色球固定为 6+5，大乐透固定为 5+4，实际金额分别为 10 元和 12 元。</p>
+        </template>
+        <div v-else class="controls">
           <label>生成方法<select v-model="model"><option v-for="(label, name) in modelNames" :key="name" :value="name">{{ label }}{{ name === 'uniform' ? '（默认）' : '（实验）' }}</option></select></label>
           <label>注数<input v-model.number="count" type="number" min="1" max="20" step="1" /></label>
           <button class="primary" :disabled="generating || current.status.stale" @click="generate">{{ generating ? '生成中…' : '生成新候选' }}</button>
         </div>
         <p v-if="generationError" role="alert" class="error">{{ generationError }}</p>
         <template v-if="candidate">
-          <div class="budget"><b>{{ candidate.plans.length }} 注 · {{ candidate.cost_yuan }} 元</b><span>公平开奖下，一等奖覆盖 {{ candidate.plans.length }}/{{ current.combination_count.toLocaleString() }}</span></div>
+          <div class="budget"><b>{{ candidate.structure || `${candidate.plans.length} 注` }} · {{ candidate.cost_yuan }} 元</b><span>公平开奖下，一等奖覆盖 {{ candidate.plans.length }}/{{ current.combination_count.toLocaleString() }}</span></div>
+          <p v-if="candidate.fixed_number_pool" class="muted">号码池 {{ candidate.fixed_number_pool.join(' ') }} · 红球/前区候选 {{ candidate.red_pool.join(' ') }} · 蓝球/后区候选 {{ candidate.blue_pool.join(' ') }}</p>
           <p class="muted">{{ candidate.notice || current.production_policy.reason }}</p>
           <ol class="ticket-list"><li v-for="(plan, index) in candidate.plans" :key="index"><span class="ticket-index">{{ String(index + 1).padStart(2, '0') }}</span><span v-for="number in plan.red" :key="'r'+number" class="ball">{{ number }}</span><span class="plus">+</span><span v-for="number in plan.blue" :key="'b'+number" class="ball blue">{{ number }}</span></li></ol>
-          <div class="candidate-footer"><span>模型 {{ modelNames[candidate.model] }} · 种子 {{ candidate.seed }}</span><button @click="download">下载本次记录</button></div>
+          <div class="candidate-footer"><span>来源 {{ modelNames[candidate.model] || (candidate.model === 'birthday_pool' ? '固定生日号码池' : candidate.model) }} · 种子 {{ candidate.seed }}</span><button @click="download">下载本次记录</button></div>
           <p class="muted">{{ candidate.storage_notice || '训练时生成的候选已保存在本地实验记录中。' }} 生成或下载不表示已购票；开奖安排以官方公告为准。</p>
         </template>
       </section>
@@ -101,7 +116,8 @@
         <p v-if="historyError" class="error">{{ historyError }}</p>
         <p v-if="!visibleHistory.length" class="muted">在本页生成并保存到数据库的候选，将在对应日期开奖后自动核对。记录ID保存在当前浏览器，换设备不会自动同步。</p>
         <details v-for="item in visibleHistory" :key="item.run_id">
-          <summary>{{ localTime(item.created_at) }} · {{ item.plans.length }} 注 · {{ item.result ? '已核对第 ' + item.result.issue + ' 期' : '待核对（目标日期估计 ' + item.target_date_estimate + '）' }}</summary>
+          <summary>{{ localTime(item.created_at) }} · {{ item.model === 'birthday_pool' ? '生日选号 · ' + item.structure + ' · ' + item.cost_yuan + ' 元' : item.plans.length + ' 注 · ' + item.cost_yuan + ' 元' }} · {{ item.result ? '已核对第 ' + item.result.issue + ' 期' : '待核对（目标日期估计 ' + item.target_date_estimate + '）' }}</summary>
+          <p v-if="item.fixed_number_pool" class="muted">固定号码池 {{ item.fixed_number_pool.join(' ') }}</p>
           <p v-for="(plan, index) in item.plans" :key="index">{{ plan.red.join(' ') }} + {{ plan.blue.join(' ') }}<template v-if="item.result"> · 命中 {{ item.result.hits[index].red_hits }} + {{ item.result.hits[index].blue_hits }}{{ item.result.hits[index].jackpot ? ' · 一等奖号码全中' : '' }}</template></p>
           <p class="muted">{{ item.result ? '仅核对命中个数；未计算奖金，不表示实际购票。' : '日期延期或休市时保留待核对，不擅自匹配其他期次。' }}</p>
         </details>
@@ -116,11 +132,13 @@ import { computed, onMounted, ref } from 'vue';
 import { api } from '../api';
 const lotteryNames = { ssq: '双色球', dlt: '大乐透' };
 const modelNames = { uniform: '均匀随机', frequency: '历史频率', history_logistic: '历史特征模型', metadata_logistic: '历史 + 周边信息模型' };
+const birthdayPool = [1, 2, 5, 7, 16, 18, 21, 27];
 const splitNames = { train: '训练', validation: '验证', test: '留出测试' };
 const runNames = { running: '运行中', failed: '失败', no_change: '暂无新开奖', succeeded: '成功' };
 const stageNames = { setup: '初始化', collect: '采集', settle: '开奖核对', train: '训练', publish: '发布', complete: '完成' };
 const report = ref(null), loading = ref(false), error = ref(''), type = ref('ssq');
 const model = ref('uniform'), count = ref(5), candidate = ref(null), generating = ref(false), generationError = ref('');
+const generationMode = ref('model'), birthdayMode = ref('single'), budget = ref(10);
 const history = ref([]), historyError = ref('');
 const current = computed(() => report.value?.lotteries[type.value]);
 const prospective = computed(() => report.value?.automation?.prospective?.find(p => p.lottery_type === type.value));
@@ -144,11 +162,15 @@ async function load() {
   finally { loading.value = false; }
 }
 async function generate() {
-  if (!Number.isInteger(count.value) || count.value < 1 || count.value > 20) { generationError.value = '注数须为1—20的整数'; return; }
+  if (generationMode.value === 'model' && (!Number.isInteger(count.value) || count.value < 1 || count.value > 20)) { generationError.value = '注数须为1—20的整数'; return; }
+  if (generationMode.value === 'birthday' && birthdayMode.value === 'single' && (!Number.isInteger(budget.value) || budget.value < 2 || budget.value > 40)) { generationError.value = '单式预算须为2—40元的整数'; return; }
   generating.value = true; generationError.value = '';
   const requestedType = type.value;
   try {
-    const result = await api.predictBundle({ lotteryType: requestedType, model: model.value, count: count.value });
+    const body = generationMode.value === 'birthday'
+      ? { lotteryType: requestedType, birthdayPool: true, selectionMode: birthdayMode.value, budget: budget.value }
+      : { lotteryType: requestedType, model: model.value, count: count.value };
+    const result = await api.predictBundle(body);
     if (type.value === requestedType) candidate.value = result.data.data;
     if (result.data.data.saved) {
       try { localStorage.setItem('research_run_ids', JSON.stringify([result.data.data.run_id, ...savedIds()].slice(0, 20))); }
@@ -167,5 +189,5 @@ onMounted(load);
 </script>
 
 <style scoped>
-.research-page{max-width:1080px;margin:auto;padding:44px 24px 60px;color:#213333;font-family:Inter,-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;line-height:1.65}.hero{display:flex;justify-content:space-between;align-items:center;margin-bottom:32px}.eyebrow{font-size:12px;letter-spacing:2px;color:#407c72;margin:0}h1{font-size:42px;letter-spacing:-1px;line-height:1.25;margin:12px 0}h2{font-size:20px;margin:0}.hero p:last-child{color:#697b78;margin:0}.hero-note{padding:8px 14px;background:#e8f1ed;border-radius:30px;font-size:12px;white-space:nowrap}.lottery-tabs{display:flex;gap:8px;margin-bottom:22px}button,select,input{font:inherit}button{cursor:pointer;border:1px solid #d9e2df;border-radius:8px;background:white;color:#334d47;padding:9px 17px}button:hover{border-color:#477e71}button:disabled{opacity:.45;cursor:default}.lottery-tabs .active,.primary{background:#245a4e;color:white;border-color:#245a4e}.panel{background:white;border:1px solid #e1e8e5;border-radius:16px;padding:26px;margin-bottom:22px}.section-heading{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:22px}.section-heading>span,.muted{font-size:13px;color:#657b75}.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin:24px 0}.stats-grid strong{font-size:32px;line-height:1.3;display:block;letter-spacing:-1px}.stats-grid span{font-size:12px;color:#70837e}.split-grid{display:grid;grid-template-columns:repeat(3,1fr);background:#f3f7f5;border-radius:10px;padding:16px;gap:14px;font-size:13px}.split-grid span{display:block;font-size:12px;color:#70837e;margin-top:4px}.table-scroll{overflow-x:auto}table{border-collapse:collapse;width:100%;text-align:left;font-size:12px;white-space:nowrap}th,td{padding:12px 10px;border-bottom:1px solid #e8eeeb}th{font-weight:500;color:#6d7d78}.baseline{background:#f2f7f3}.controls{display:flex;gap:18px;align-items:end;flex-wrap:wrap}.controls label{font-size:12px;color:#647971;display:flex;flex-direction:column;gap:6px}.controls select,.controls input{border:1px solid #dbe4df;padding:10px;border-radius:8px;background:white;color:#223c32}.controls input{width:70px}.budget{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:24px}.budget span{font-size:13px;color:#60776d}.ticket-list{padding:0;list-style:none;margin:18px 0}.ticket-list li{display:flex;align-items:center;gap:10px;padding:15px 0;border-bottom:1px solid #edf1ef}.ticket-index{font-size:12px;color:#8b9a94;margin-right:14px}.ball{background:#fff1ee;color:#ba5341;width:38px;height:38px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:17px;font-weight:600}.ball.blue{background:#ecf3fd;color:#3a70a7}.plus{color:#92a39c;margin:0 5px}.candidate-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:12px;color:#6d7f77}details{margin-top:18px;font-size:13px}summary{cursor:pointer;color:#326659}details p{color:#60746b}.error{padding:12px;background:#fff1ec;color:#a24027;border-radius:8px}.footer{padding:0 10px;color:#73877d;font-size:12px}.fingerprint{overflow-wrap:anywhere}a{color:#326659}@media(max-width:650px){.research-page{padding:26px 14px 40px}.hero-note{display:none}h1{font-size:34px}.panel{padding:20px 15px}.section-heading{display:block}.section-heading>span{display:block;margin-top:6px}.stats-grid{grid-template-columns:repeat(2,1fr)}.split-grid{grid-template-columns:1fr}.ticket-list li{gap:5px}.ball{width:30px;height:30px;font-size:14px}.ticket-index{margin-right:4px}.plus{margin:0 2px}.candidate-footer{flex-wrap:wrap}}
+.research-page{max-width:1080px;margin:auto;padding:44px 24px 60px;color:#213333;font-family:Inter,-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;line-height:1.65}.hero{display:flex;justify-content:space-between;align-items:center;margin-bottom:32px}.eyebrow{font-size:12px;letter-spacing:2px;color:#407c72;margin:0}h1{font-size:42px;letter-spacing:-1px;line-height:1.25;margin:12px 0}h2{font-size:20px;margin:0}.hero p:last-child{color:#697b78;margin:0}.hero-note{padding:8px 14px;background:#e8f1ed;border-radius:30px;font-size:12px;white-space:nowrap}.lottery-tabs{display:flex;gap:8px;margin-bottom:22px}button,select,input{font:inherit}button{cursor:pointer;border:1px solid #d9e2df;border-radius:8px;background:white;color:#334d47;padding:9px 17px}button:hover{border-color:#477e71}button:disabled{opacity:.45;cursor:default}.lottery-tabs .active,.primary,.choice-tabs .active{background:#245a4e;color:white;border-color:#245a4e}.choice-tabs{display:flex;gap:8px;margin:0 0 18px}.pool-numbers{color:#245a4e;font-variant-numeric:tabular-nums}.panel{background:white;border:1px solid #e1e8e5;border-radius:16px;padding:26px;margin-bottom:22px}.section-heading{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:22px}.section-heading>span,.muted{font-size:13px;color:#657b75}.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin:24px 0}.stats-grid strong{font-size:32px;line-height:1.3;display:block;letter-spacing:-1px}.stats-grid span{font-size:12px;color:#70837e}.split-grid{display:grid;grid-template-columns:repeat(3,1fr);background:#f3f7f5;border-radius:10px;padding:16px;gap:14px;font-size:13px}.split-grid span{display:block;font-size:12px;color:#70837e;margin-top:4px}.table-scroll{overflow-x:auto}table{border-collapse:collapse;width:100%;text-align:left;font-size:12px;white-space:nowrap}th,td{padding:12px 10px;border-bottom:1px solid #e8eeeb}th{font-weight:500;color:#6d7d78}.baseline{background:#f2f7f3}.controls{display:flex;gap:18px;align-items:end;flex-wrap:wrap}.controls label{font-size:12px;color:#647971;display:flex;flex-direction:column;gap:6px}.controls select,.controls input{border:1px solid #dbe4df;padding:10px;border-radius:8px;background:white;color:#223c32}.controls input{width:70px}.budget{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:24px}.budget span{font-size:13px;color:#60776d}.ticket-list{padding:0;list-style:none;margin:18px 0}.ticket-list li{display:flex;align-items:center;gap:10px;padding:15px 0;border-bottom:1px solid #edf1ef}.ticket-index{font-size:12px;color:#8b9a94;margin-right:14px}.ball{background:#fff1ee;color:#ba5341;width:38px;height:38px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:17px;font-weight:600}.ball.blue{background:#ecf3fd;color:#3a70a7}.plus{color:#92a39c;margin:0 5px}.candidate-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:12px;color:#6d7f77}details{margin-top:18px;font-size:13px}summary{cursor:pointer;color:#326659}details p{color:#60746b}.error{padding:12px;background:#fff1ec;color:#a24027;border-radius:8px}.footer{padding:0 10px;color:#73877d;font-size:12px}.fingerprint{overflow-wrap:anywhere}a{color:#326659}@media(max-width:650px){.research-page{padding:26px 14px 40px}.hero-note{display:none}h1{font-size:34px}.panel{padding:20px 15px}.section-heading{display:block}.section-heading>span{display:block;margin-top:6px}.stats-grid{grid-template-columns:repeat(2,1fr)}.split-grid{grid-template-columns:1fr}.ticket-list li{gap:5px}.ball{width:30px;height:30px;font-size:14px}.ticket-index{margin-right:4px}.plus{margin:0 2px}.candidate-footer{flex-wrap:wrap}}
 </style>
